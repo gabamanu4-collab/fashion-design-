@@ -1,0 +1,6 @@
+{
+  "name": "FD Design Portfolio Builder",
+  "description": "Interactive digital portfolio builder for fashion design students, graduates, and professionals with Supabase backend, real project showcases, customizable editorial themes, and moderation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
