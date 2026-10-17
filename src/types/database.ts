@@ -8,6 +8,7 @@ export type ModerationStatus = 'approved' | 'pending' | 'rejected';
 
 export interface Profile {
   id: string;
+  email?: string | null;
   display_name: string;
   username: string | null;
   avatar_path: string | null;

@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { User, LogOut, LayoutDashboard, Shield, FolderGit2, Plus, Menu, X, Database } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { user, profile, isAdmin, isConfigured, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
@@ -56,19 +56,6 @@ export const Navbar: React.FC = () => {
 
         {/* Zone 3: 1 primary action or profile control */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Supabase connection badge */}
-          <Link
-            to="/database-setup"
-            title={isConfigured ? 'Supabase Database Connected' : 'Connect Supabase Database'}
-            className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              isConfigured
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
-            }`}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${isConfigured ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-            <span className="font-mono text-[11px] font-medium">{isConfigured ? 'Database Live' : 'Connect DB'}</span>
-          </Link>
 
           {user ? (
             <div className="relative">
@@ -128,22 +115,23 @@ export const Navbar: React.FC = () => {
                     <span>Profile & Specialization</span>
                   </Link>
 
-                  <Link
-                    to="/database-setup"
-                    className="flex items-center gap-2 px-3 py-2 hover:bg-[#F9F8F5] transition-colors border-t border-[#F0ECE1]"
-                  >
-                    <Database className="w-3.5 h-3.5 text-[#78716C]" />
-                    <span>Database & Storage Setup</span>
-                  </Link>
-
                   {isAdmin && (
-                    <Link
-                      to="/admin"
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-[#F9F8F5] text-amber-900 font-medium transition-colors border-t border-[#F0ECE1]"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Admin Dashboard</span>
-                    </Link>
+                    <>
+                      <Link
+                        to="/admin"
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-[#F9F8F5] text-amber-900 font-medium transition-colors border-t border-[#F0ECE1]"
+                      >
+                        <Shield className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Admin Dashboard</span>
+                      </Link>
+                      <Link
+                        to="/admin/sql-setup"
+                        className="flex items-center gap-2 px-3 py-2 hover:bg-[#F9F8F5] text-[#78716C] hover:text-[#1A1A1A] transition-colors"
+                      >
+                        <Database className="w-3.5 h-3.5" />
+                        <span>Database Setup & SQL</span>
+                      </Link>
+                    </>
                   )}
 
                   <div className="border-t border-[#F0ECE1] mt-1 pt-1">
@@ -199,19 +187,16 @@ export const Navbar: React.FC = () => {
               {link.label}
             </Link>
           ))}
-          <Link
-            to="/database-setup"
-            onClick={() => setMobileMenuOpen(false)}
-            className="flex items-center justify-between py-2 text-stone-800 font-medium border-t border-stone-200 mt-1 pt-2"
-          >
-            <span className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-stone-600" />
-              <span>Database Connection</span>
-            </span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${isConfigured ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-              {isConfigured ? 'Live' : 'Pending'}
-            </span>
-          </Link>
+          {isAdmin && (
+            <Link
+              to="/admin"
+              onClick={() => setMobileMenuOpen(false)}
+              className="flex items-center gap-2 py-2 text-amber-900 font-medium border-t border-stone-200 mt-1 pt-2"
+            >
+              <Shield className="w-4 h-4 text-amber-700" />
+              <span>Admin Console</span>
+            </Link>
+          )}
           {!user && (
             <div className="pt-3 border-t border-[#E7E5E0] flex flex-col gap-2">
               <Link

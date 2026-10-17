@@ -35,99 +35,128 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [isConfigured, setIsConfigured] = useState<boolean>(() => checkIsSupabaseConfigured());
 
-  const fetchProfile = useCallback(async (userId: string, userEmail?: string | null) => {
-    if (!checkIsSupabaseConfigured()) return null;
-    const isSuper = isSuperAdminEmail(userEmail);
+  const fetchProfile = useCallback(
+    async (userId: string, userEmail?: string | null, userMetadata?: Record<string, any> | null) => {
+      if (!checkIsSupabaseConfigured()) return null;
+      const isSuper = isSuperAdminEmail(userEmail);
 
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single();
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user profile:', error.message);
-        // If super admin and table is not created yet or RLS blocked, supply synthetic admin profile
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error fetching user profile:', error.message);
+          // If super admin and table is not created yet or RLS blocked, supply synthetic admin profile
+          if (isSuper) {
+            return {
+              id: userId,
+              email: userEmail || null,
+              display_name: userMetadata?.full_name || userMetadata?.name || (userEmail ? userEmail.split('@')[0] : 'Admin'),
+              role: 'admin',
+              account_status: 'active',
+              user_type: 'professional',
+              specialties: ['Creative Direction'],
+              skills: ['Administration'],
+              onboarding_completed: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            } as unknown as Profile;
+          }
+          return null;
+        }
+
+        // If profile does not exist in DB yet (for ANY user), automatically create it in public.profiles!
+        if (!data) {
+          const derivedName =
+            userMetadata?.full_name ||
+            userMetadata?.display_name ||
+            userMetadata?.name ||
+            (userEmail ? userEmail.split('@')[0] : 'Designer');
+
+          const initialProfile: Partial<Profile> = {
+            id: userId,
+            email: userEmail || undefined,
+            display_name: derivedName,
+            role: isSuper ? 'admin' : 'user',
+            account_status: 'active',
+            user_type: (userMetadata?.user_type as UserType) || (isSuper ? 'professional' : 'student'),
+            specialties: isSuper ? ['Creative Direction', 'Platform Governance'] : [],
+            skills: isSuper ? ['Fashion Design', 'Administration'] : [],
+            onboarding_completed: isSuper,
+          };
+
+          try {
+            const { data: created, error: insertErr } = await supabase
+              .from('profiles')
+              .upsert(initialProfile, { onConflict: 'id' })
+              .select()
+              .single();
+
+            if (created) return created as Profile;
+            if (insertErr) {
+              console.warn('Profile auto-insert note:', insertErr.message);
+            }
+          } catch (e) {
+            console.warn('Upsert fallback profile exception:', e);
+          }
+
+          return initialProfile as unknown as Profile;
+        }
+
+        const prof = data as Profile;
+
+        // Sync email if missing in public.profiles record
+        if (prof && userEmail && (!prof.email || prof.email !== userEmail)) {
+          try {
+            await supabase.from('profiles').update({ email: userEmail }).eq('id', userId);
+            prof.email = userEmail;
+          } catch {
+            // best-effort
+          }
+        }
+
+        // Auto-promote super admin in DB if their profile exists but role is not admin yet
+        if (prof && isSuper && prof.role !== 'admin') {
+          try {
+            await supabase.from('profiles').update({ role: 'admin', account_status: 'active' }).eq('id', userId);
+            prof.role = 'admin';
+          } catch (e) {
+            console.warn('Super admin role promotion notice:', e);
+            prof.role = 'admin';
+          }
+        }
+
+        return prof;
+      } catch (err) {
+        console.error('Exception fetching profile:', err);
         if (isSuper) {
           return {
             id: userId,
-            display_name: 'Admin Manu',
+            email: userEmail || null,
+            display_name: userMetadata?.full_name || userMetadata?.name || (userEmail ? userEmail.split('@')[0] : 'Admin'),
             role: 'admin',
             account_status: 'active',
             user_type: 'professional',
-            specialties: ['Haute Couture', 'Platform Governance'],
-            skills: ['Creative Direction', 'System Administration'],
+            specialties: [],
+            skills: [],
             onboarding_completed: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
           } as unknown as Profile;
         }
         return null;
       }
-
-      // If profile does not exist in DB yet, auto-upsert for super admin
-      if (!data && isSuper) {
-        const adminProfile: Partial<Profile> = {
-          id: userId,
-          display_name: 'Admin Manu',
-          role: 'admin',
-          account_status: 'active',
-          user_type: 'professional',
-          specialties: ['Creative Direction', 'Platform Governance'],
-          skills: ['Fashion Design', 'Administration'],
-          onboarding_completed: true,
-        };
-        try {
-          const { data: created } = await supabase
-            .from('profiles')
-            .upsert(adminProfile, { onConflict: 'id' })
-            .select()
-            .single();
-          if (created) return created as Profile;
-        } catch {
-          // continue with fallback
-        }
-        return adminProfile as unknown as Profile;
-      }
-
-      const prof = data as Profile;
-      // Auto-promote super admin in DB if their profile exists but role is not admin yet
-      if (prof && isSuper && prof.role !== 'admin') {
-        try {
-          await supabase.from('profiles').update({ role: 'admin', account_status: 'active' }).eq('id', userId);
-          prof.role = 'admin';
-        } catch (e) {
-          console.warn('Super admin role promotion notice:', e);
-          prof.role = 'admin';
-        }
-      }
-
-      return prof;
-    } catch (err) {
-      console.error('Exception fetching profile:', err);
-      if (isSuper) {
-        return {
-          id: userId,
-          display_name: 'Admin Manu',
-          role: 'admin',
-          account_status: 'active',
-          user_type: 'professional',
-          specialties: [],
-          skills: [],
-          onboarding_completed: true,
-        } as unknown as Profile;
-      }
-      return null;
-    }
-  }, []);
+    },
+    []
+  );
 
   const refreshProfile = useCallback(async () => {
     if (user?.id) {
-      const p = await fetchProfile(user.id, user.email);
+      const p = await fetchProfile(user.id, user.email, user.user_metadata);
       if (p) setProfile(p);
     }
-  }, [user?.id, user?.email, fetchProfile]);
+  }, [user?.id, user?.email, user?.user_metadata, fetchProfile]);
 
   useEffect(() => {
     const handleConfigChange = () => {
@@ -170,7 +199,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(initialSession?.user ?? null);
 
       if (initialSession?.user) {
-        fetchProfile(initialSession.user.id, initialSession.user.email).then((p) => {
+        fetchProfile(initialSession.user.id, initialSession.user.email, initialSession.user.user_metadata).then((p) => {
           if (isMounted) {
             setProfile(p);
             setLoading(false);
@@ -190,7 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(newSession?.user ?? null);
 
       if (newSession?.user) {
-        const p = await fetchProfile(newSession.user.id, newSession.user.email);
+        const p = await fetchProfile(newSession.user.id, newSession.user.email, newSession.user.user_metadata);
         if (isMounted) setProfile(p);
       } else {
         setProfile(null);
@@ -249,6 +278,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isSuper = isSuperAdminEmail(email);
           await supabase.from('profiles').upsert({
             id: data.user.id,
+            email: email,
             display_name: fullName,
             user_type: userType,
             role: isSuper ? 'admin' : 'user',
@@ -276,11 +306,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
-      return { error };
+      if (error) return { error };
+
+      if (data?.user) {
+        const p = await fetchProfile(data.user.id, data.user.email, data.user.user_metadata);
+        if (p) setProfile(p);
+      }
+
+      return { error: null };
     } catch (err: any) {
       return { error: err };
     }

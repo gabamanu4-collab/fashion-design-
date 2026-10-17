@@ -37,9 +37,7 @@ export const AdminLayout: React.FC = () => {
           </div>
           <h2 className="font-serif text-2xl font-bold text-[#141210]">Administrative Access Required</h2>
           <p className="text-xs text-[#57524A] leading-relaxed">
-            The <code className="bg-[#FAF9F6] px-1 py-0.5 rounded font-mono">/admin</code> console is restricted to administrators.
-            <br />
-            Configured Super Admin: <strong className="text-[#141210]">gabamanu4@gmail.com</strong>
+            The Atelier administration console is restricted to authorized administrative personnel only.
           </p>
 
           {!user ? (
@@ -101,8 +99,8 @@ export const AdminLayout: React.FC = () => {
             <Shield className="w-4 h-4 text-amber-400 shrink-0" />
             <span className="font-bold tracking-wider">ADMINISTRATIVE CONSOLE</span>
             <span className="text-[#A8A29E] hidden md:inline">·</span>
-            <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono text-[10px] font-semibold border border-amber-400/30">
-              Super Admin: {user?.email || 'gabamanu4@gmail.com'}
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono text-[10px] font-semibold border border-amber-400/30">
+              Admin: {user?.email}
             </span>
           </div>
           <Link

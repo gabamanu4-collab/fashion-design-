@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { fetchUsersAdmin, updateUserRole, updateUserStatus } from '../../services/adminService';
 import { Profile } from '../../types/database';
-import { Search, Shield, UserCheck, UserX, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Search, Shield, UserCheck, UserX, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
 
 export const AdminUsersPage: React.FC = () => {
   const { user } = useAuth();
@@ -24,10 +24,14 @@ export const AdminUsersPage: React.FC = () => {
     loadUsers();
   }, [search]);
 
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const handleToggleRole = async (targetUser: Profile) => {
     if (!user?.id) return;
+    setErrorMessage(null);
     if (targetUser.id === user.id) {
-      alert('You cannot modify your own administrative role.');
+      setErrorMessage('You cannot modify your own administrative role.');
+      setTimeout(() => setErrorMessage(null), 4000);
       return;
     }
     const nextRole = targetUser.role === 'admin' ? 'user' : 'admin';
@@ -45,14 +49,17 @@ export const AdminUsersPage: React.FC = () => {
       loadUsers();
       setTimeout(() => setNotification(null), 3000);
     } else if (error) {
-      alert(error.message);
+      setErrorMessage(error.message);
+      setTimeout(() => setErrorMessage(null), 5000);
     }
   };
 
   const handleToggleStatus = async (targetUser: Profile) => {
     if (!user?.id) return;
+    setErrorMessage(null);
     if (targetUser.id === user.id) {
-      alert('You cannot suspend your own administrative account.');
+      setErrorMessage('You cannot suspend your own administrative account.');
+      setTimeout(() => setErrorMessage(null), 4000);
       return;
     }
     const nextStatus = targetUser.account_status === 'active' ? 'suspended' : 'active';
@@ -70,7 +77,8 @@ export const AdminUsersPage: React.FC = () => {
       loadUsers();
       setTimeout(() => setNotification(null), 3000);
     } else if (error) {
-      alert(error.message);
+      setErrorMessage(error.message);
+      setTimeout(() => setErrorMessage(null), 5000);
     }
   };
 
@@ -84,22 +92,40 @@ export const AdminUsersPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="relative max-w-xs w-full">
-          <Search className="w-4 h-4 text-[#A3998F] absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search by name, institution..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-[#DCD7CD] rounded-lg text-xs text-[#141210] focus:outline-hidden"
-          />
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative max-w-xs w-full">
+            <Search className="w-4 h-4 text-[#A3998F] absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by name, email, institution..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-[#DCD7CD] rounded-lg text-xs text-[#141210] focus:outline-hidden"
+            />
+          </div>
+          <button
+            onClick={loadUsers}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-[#DCD7CD] hover:border-[#141210] rounded-lg text-xs font-medium text-[#141210] transition-colors shrink-0 shadow-xs"
+            title="Refresh user list"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
         </div>
       </div>
 
       {notification && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>{notification}</span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -108,13 +134,13 @@ export const AdminUsersPage: React.FC = () => {
         {loading ? (
           <div className="p-12 text-center text-xs text-[#78716A]">Querying user accounts...</div>
         ) : users.length === 0 ? (
-          <div className="p-12 text-center text-xs text-[#78716A]">No users found.</div>
+          <div className="p-12 text-center text-xs text-[#78716A]">No users found in database profiles.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#FAF9F6] border-b border-[#E7E2D6] text-[#78716A] uppercase font-mono text-[10px]">
                 <tr>
-                  <th className="py-3 px-4">Designer</th>
+                  <th className="py-3 px-4">Designer / Account</th>
                   <th className="py-3 px-4">User Type</th>
                   <th className="py-3 px-4">Institution</th>
                   <th className="py-3 px-4">Role</th>
@@ -128,7 +154,11 @@ export const AdminUsersPage: React.FC = () => {
                     <td className="py-3.5 px-4">
                       <div>
                         <p className="font-semibold text-[#141210]">{u.display_name}</p>
-                        <p className="text-[11px] font-mono text-[#78716A]">{u.id.slice(0, 8)}...</p>
+                        {u.email ? (
+                          <p className="text-[11px] text-[#57524A] font-mono">{u.email}</p>
+                        ) : (
+                          <p className="text-[11px] text-[#78716A] font-mono">{u.id.slice(0, 8)}...</p>
+                        )}
                       </div>
                     </td>
                     <td className="py-3.5 px-4 capitalize text-[#57524A]">{u.user_type || 'student'}</td>

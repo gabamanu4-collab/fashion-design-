@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { checkIsSupabaseConfigured, getEffectiveSupabaseUrl, getSupabaseProjectRef } from '../../lib/config';
 import { supabase } from '../../lib/supabase';
-import { FULL_SQL_MIGRATION } from '../../data/sqlMigrationScript';
-import { Database, Copy, Check, Terminal, ExternalLink, ShieldCheck, Activity, AlertCircle, CheckCircle2, Settings } from 'lucide-react';
+import { FULL_SQL_MIGRATION, USER_PROFILES_FIX_SQL } from '../../data/sqlMigrationScript';
+import { Database, Copy, Check, Terminal, ExternalLink, ShieldCheck, Activity, AlertCircle, CheckCircle2, Settings, Users } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const AdminSqlSetupPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
+  const [copiedFix, setCopiedFix] = useState(false);
   const [testing, setTesting] = useState(false);
   const isConfigured = checkIsSupabaseConfigured();
   const currentUrl = getEffectiveSupabaseUrl();
@@ -26,6 +27,12 @@ export const AdminSqlSetupPage: React.FC = () => {
     navigator.clipboard.writeText(FULL_SQL_MIGRATION);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copyProfilesFix = () => {
+    navigator.clipboard.writeText(USER_PROFILES_FIX_SQL);
+    setCopiedFix(true);
+    setTimeout(() => setCopiedFix(false), 2000);
   };
 
   const handleTestConnection = async () => {
@@ -172,6 +179,45 @@ export const AdminSqlSetupPage: React.FC = () => {
             )}
           </div>
         )}
+      </div>
+
+      {/* Quick Fix: User Profiles Trigger & Backfill */}
+      <div className="bg-[#FAF9F6] border-2 border-emerald-500/40 rounded-2xl p-6 sm:p-8 space-y-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-800">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="font-serif text-lg font-bold text-[#141210]">User Profiles Auto-Sync &amp; Backfill SQL</h2>
+              <p className="text-xs text-[#57524A] mt-0.5">
+                Fixes new user logins not appearing in Supabase <code className="font-mono text-emerald-900 bg-emerald-100/60 px-1 py-0.5 rounded">public.profiles</code>. Adds an automatic trigger and backfills existing users.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={`https://supabase.com/dashboard/project/${getSupabaseProjectRef(currentUrl)}/sql/new`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3.5 py-1.5 border border-[#DCD7CD] hover:border-[#141210] bg-white rounded-lg text-xs font-semibold flex items-center gap-1.5 text-[#141210] transition-colors"
+            >
+              <span>Open SQL Editor</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <button
+              onClick={copyProfilesFix}
+              className="px-3.5 py-1.5 bg-emerald-700 text-white hover:bg-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+            >
+              {copiedFix ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedFix ? 'Copied to Clipboard' : 'Copy Profile Fix SQL'}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-[#1C1917] text-[#FAF8F5] p-3.5 rounded-xl font-mono text-[11px] max-h-48 overflow-y-auto">
+          <pre>{USER_PROFILES_FIX_SQL}</pre>
+        </div>
       </div>
 
       {/* SQL Migration Script */}

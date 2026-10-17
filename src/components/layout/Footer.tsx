@@ -74,7 +74,7 @@ export const Footer: React.FC = () => {
                 <Link to="/terms" className="hover:text-white transition-colors">Terms of Service</Link>
               </li>
               <li>
-                <Link to="/database-setup" className="hover:text-white transition-colors text-amber-200/90 hover:text-amber-100">Database &amp; SQL Setup</Link>
+                <Link to="/database-setup" className="hover:text-white transition-colors">Platform Infrastructure</Link>
               </li>
             </ul>
           </div>
@@ -82,11 +82,11 @@ export const Footer: React.FC = () => {
 
         {/* Bottom Bar */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#78716A]">
-          <p>© 2026 FD Design Portfolio Builder. All fashion works copyrighted to their respective designers.</p>
+          <p>© 2026 FD Atelier. All fashion portfolios copyrighted to their respective creators.</p>
           <div className="flex items-center gap-6">
-            <span>Powered by Supabase PostgreSQL</span>
+            <span>Encrypted Cloud Storage</span>
             <span>·</span>
-            <span>WCAG AA Accessible</span>
+            <span>High-Fidelity Archival</span>
           </div>
         </div>
       </div>

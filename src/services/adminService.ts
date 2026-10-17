@@ -60,7 +60,7 @@ export async function fetchUsersAdmin(searchTerm?: string): Promise<Profile[]> {
   try {
     let query = supabase.from('profiles').select('*').order('created_at', { ascending: false });
     if (searchTerm && searchTerm.trim()) {
-      query = query.or(`display_name.ilike.%${searchTerm}%,username.ilike.%${searchTerm}%,institution.ilike.%${searchTerm}%`);
+      query = query.or(`display_name.ilike.%${searchTerm}%,username.ilike.%${searchTerm}%,institution.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
     }
     const { data, error } = await query;
     if (error) throw error;

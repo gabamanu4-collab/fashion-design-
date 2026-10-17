@@ -21,6 +21,7 @@ $$ LANGUAGE plpgsql;
 -- 3. PROFILES TABLE
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT,
   display_name TEXT NOT NULL,
   username TEXT UNIQUE,
   avatar_path TEXT,
@@ -40,6 +41,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Ensure email column exists if table was created in an earlier migration
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
 
 -- Admin verification function with Super Administrator check
 CREATE OR REPLACE FUNCTION public.is_admin(user_id UUID)
@@ -70,40 +74,106 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.is_admin(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.is_admin(UUID) TO authenticated, anon;
 
--- Auto-provision or promote Super Administrator gabamanu4@gmail.com
-CREATE OR REPLACE FUNCTION public.handle_super_admin_assignment()
-RETURNS TRIGGER AS $$
+-- Universal trigger to automatically create or sync profile whenever a user signs up or logs in
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public, auth
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_is_super BOOLEAN;
+  v_name TEXT;
+  v_user_type TEXT;
+  v_role TEXT;
 BEGIN
-  IF LOWER(NEW.email) = 'gabamanu4@gmail.com' THEN
-    INSERT INTO public.profiles (
-      id,
-      display_name,
-      role,
-      account_status,
-      user_type,
-      onboarding_completed
-    )
-    VALUES (
-      NEW.id,
-      COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'display_name', 'Super Admin Manu'),
-      'admin',
-      'active',
-      'professional',
-      true
-    )
-    ON CONFLICT (id) DO UPDATE SET
-      role = 'admin',
-      account_status = 'active';
-  END IF;
+  v_is_super := LOWER(COALESCE(NEW.email, '')) = 'gabamanu4@gmail.com';
+  v_name := COALESCE(
+    NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'display_name',
+    NEW.raw_user_meta_data->>'name',
+    SPLIT_PART(COALESCE(NEW.email, 'Designer'), '@', 1)
+  );
+  v_user_type := COALESCE(NEW.raw_user_meta_data->>'user_type', 'student');
+  v_role := CASE WHEN v_is_super THEN 'admin' ELSE 'user' END;
+
+  INSERT INTO public.profiles (
+    id,
+    email,
+    display_name,
+    user_type,
+    role,
+    account_status,
+    onboarding_completed,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    NEW.email,
+    v_name,
+    v_user_type,
+    v_role,
+    'active',
+    v_is_super,
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = COALESCE(EXCLUDED.email, public.profiles.email),
+    display_name = COALESCE(public.profiles.display_name, EXCLUDED.display_name),
+    role = CASE WHEN v_is_super THEN 'admin' ELSE public.profiles.role END,
+    account_status = COALESCE(public.profiles.account_status, 'active');
+
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS tr_super_admin_assignment ON auth.users;
-CREATE TRIGGER tr_super_admin_assignment
+DROP TRIGGER IF EXISTS tr_on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+CREATE TRIGGER on_auth_user_created
   AFTER INSERT OR UPDATE ON auth.users
   FOR EACH ROW
-  EXECUTE FUNCTION public.handle_super_admin_assignment();
+  EXECUTE FUNCTION public.handle_new_user();
+
+-- Immediate backfill: Populate profiles for ALL existing auth.users who do not yet have a profile row
+INSERT INTO public.profiles (
+  id,
+  email,
+  display_name,
+  user_type,
+  role,
+  account_status,
+  onboarding_completed,
+  created_at,
+  updated_at
+)
+SELECT 
+  u.id,
+  u.email,
+  COALESCE(
+    u.raw_user_meta_data->>'full_name',
+    u.raw_user_meta_data->>'display_name',
+    u.raw_user_meta_data->>'name',
+    SPLIT_PART(COALESCE(u.email, 'Fashion Designer'), '@', 1)
+  ),
+  COALESCE(u.raw_user_meta_data->>'user_type', 'student'),
+  CASE WHEN LOWER(COALESCE(u.email, '')) = 'gabamanu4@gmail.com' THEN 'admin' ELSE 'user' END,
+  'active',
+  (LOWER(COALESCE(u.email, '')) = 'gabamanu4@gmail.com'),
+  NOW(),
+  NOW()
+FROM auth.users u
+LEFT JOIN public.profiles p ON p.id = u.id
+WHERE p.id IS NULL
+ON CONFLICT (id) DO NOTHING;
+
+-- Populate email on any existing profiles that have NULL email
+UPDATE public.profiles p
+SET email = u.email
+FROM auth.users u
+WHERE p.id = u.id AND (p.email IS NULL OR p.email = '');
 
 -- Immediately elevate gabamanu4@gmail.com if already exists
 UPDATE public.profiles
@@ -333,17 +403,17 @@ ALTER TABLE public.contact_submissions ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Public profiles are viewable by everyone" ON public.profiles;
 CREATE POLICY "Public profiles are viewable by everyone"
   ON public.profiles FOR SELECT
-  USING (account_status = 'active');
+  USING (account_status = 'active' OR auth.uid() = id OR public.is_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
 CREATE POLICY "Users can insert their own profile"
   ON public.profiles FOR INSERT
-  WITH CHECK (auth.uid() = id);
+  WITH CHECK (auth.uid() = id OR public.is_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
-  USING (auth.uid() = id);
+  USING (auth.uid() = id OR public.is_admin(auth.uid()));
 
 DROP POLICY IF EXISTS "Admins full manage profiles" ON public.profiles;
 CREATE POLICY "Admins full manage profiles"
@@ -535,4 +605,120 @@ VALUES
   ('uploads', '{"max_file_size_mb": 10, "allowed_formats": ["image/jpeg", "image/png", "image/webp"]}'::jsonb, 'Media upload limits'),
   ('moderation', '{"auto_approve_portfolios": true, "require_email_verification": false}'::jsonb, 'Platform moderation rules')
 ON CONFLICT (key) DO NOTHING;
+`;
+
+export const USER_PROFILES_FIX_SQL = `-- ==============================================================================
+-- SYNC & AUTO-CREATE USER PROFILES IN SUPABASE
+-- Run this in your Supabase SQL Editor: https://supabase.com/dashboard/project/dipdxptwolhrlwylawlh/sql/new
+-- ==============================================================================
+
+-- 1. Ensure email column exists on public.profiles table
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS email TEXT;
+
+-- 2. Create or replace trigger to auto-create profile on signup / login
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+SECURITY DEFINER
+SET search_path = public, auth
+LANGUAGE plpgsql AS \$\$
+DECLARE
+  v_is_super BOOLEAN;
+  v_name TEXT;
+  v_user_type TEXT;
+  v_role TEXT;
+BEGIN
+  v_is_super := LOWER(COALESCE(NEW.email, '')) = 'gabamanu4@gmail.com';
+  v_name := COALESCE(
+    NEW.raw_user_meta_data->>'full_name',
+    NEW.raw_user_meta_data->>'display_name',
+    NEW.raw_user_meta_data->>'name',
+    SPLIT_PART(COALESCE(NEW.email, 'Designer'), '@', 1)
+  );
+  v_user_type := COALESCE(NEW.raw_user_meta_data->>'user_type', 'student');
+  v_role := CASE WHEN v_is_super THEN 'admin' ELSE 'user' END;
+
+  INSERT INTO public.profiles (
+    id,
+    email,
+    display_name,
+    user_type,
+    role,
+    account_status,
+    onboarding_completed,
+    created_at,
+    updated_at
+  )
+  VALUES (
+    NEW.id,
+    NEW.email,
+    v_name,
+    v_user_type,
+    v_role,
+    'active',
+    v_is_super,
+    NOW(),
+    NOW()
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = COALESCE(EXCLUDED.email, public.profiles.email),
+    display_name = COALESCE(public.profiles.display_name, EXCLUDED.display_name),
+    role = CASE WHEN v_is_super THEN 'admin' ELSE public.profiles.role END,
+    account_status = COALESCE(public.profiles.account_status, 'active');
+
+  RETURN NEW;
+END;
+\$\$;
+
+-- Re-bind trigger on auth.users
+DROP TRIGGER IF EXISTS tr_super_admin_assignment ON auth.users;
+DROP TRIGGER IF EXISTS tr_on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT OR UPDATE ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
+
+-- 3. Immediate backfill: Populate profiles for ALL existing auth.users who do not yet have a profile row
+INSERT INTO public.profiles (
+  id,
+  email,
+  display_name,
+  user_type,
+  role,
+  account_status,
+  onboarding_completed,
+  created_at,
+  updated_at
+)
+SELECT 
+  u.id,
+  u.email,
+  COALESCE(
+    u.raw_user_meta_data->>'full_name',
+    u.raw_user_meta_data->>'display_name',
+    u.raw_user_meta_data->>'name',
+    SPLIT_PART(COALESCE(u.email, 'Fashion Designer'), '@', 1)
+  ),
+  COALESCE(u.raw_user_meta_data->>'user_type', 'student'),
+  CASE WHEN LOWER(COALESCE(u.email, '')) = 'gabamanu4@gmail.com' THEN 'admin' ELSE 'user' END,
+  'active',
+  (LOWER(COALESCE(u.email, '')) = 'gabamanu4@gmail.com'),
+  NOW(),
+  NOW()
+FROM auth.users u
+LEFT JOIN public.profiles p ON p.id = u.id
+WHERE p.id IS NULL
+ON CONFLICT (id) DO NOTHING;
+
+-- 4. Update email on existing profiles if null
+UPDATE public.profiles p
+SET email = u.email
+FROM auth.users u
+WHERE p.id = u.id AND (p.email IS NULL OR p.email = '');
+
+-- 5. Guarantee admin role for gabamanu4@gmail.com
+UPDATE public.profiles
+SET role = 'admin', account_status = 'active'
+WHERE id IN (SELECT id FROM auth.users WHERE LOWER(email) = 'gabamanu4@gmail.com');
 `;
